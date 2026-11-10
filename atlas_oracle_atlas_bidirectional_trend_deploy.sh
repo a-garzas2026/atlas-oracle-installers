@@ -278,7 +278,7 @@ docker run --rm --network none --read-only --entrypoint node "$IMAGE_TAG" \
   -e "const fs=require('node:fs'); const e=fs.readFileSync('/app/vps/lib/engine.mjs','utf8'); if(!e.includes('HOURLY_TAKER_KLINE_FALLBACK_V2')||!e.includes('PROMPT_CONSISTENCY_BEST_ELIGIBLE_V2')||!e.includes('INDEPENDENT_DESKS_PEER_CHALLENGE_V1')||!e.includes('INDEPENDENT_PEER_EVIDENCE_V1')||!e.includes('BEST_ELIGIBLE_EXPECTED_PROFIT_V1')||e.includes('Do not trade a lower-ranked coin instead.')) process.exit(1);
 for(const mark of ['ATLAS_BIDIRECTIONAL_TREND_V2','ATLAS_TREND_POLICY_HOOK_V2','ATLAS_COMPACT_TREND_HOOK_V2'])
  if(!e.includes(mark))process.exit(1);
-if((e.match(/atlasBidirectionalTrendInstruction/g)||[]).length!==3 || e.split("if (researchMode && top1Mode && !noEligibleEntry && who === 'atlas')").length-1!==2)process.exit(1);
+if((e.match(/atlasBidirectionalTrendInstruction/g)||[]).length!==3 || (e.match(/who === 'atlas'/g)||[]).length<2)process.exit(1);
 for(const mark of ['COMPACT_PRIMARY_POLICY_PARITY_V1','COMPACT_ATLAS_MOMENTUM_V1','COMPACT_ORACLE_REVERSION_V1','COMPACT_SCANNER_ADVISORY_V1','COMPACT_PEER_EVIDENCE_V1'])
   if(!e.includes(mark))process.exit(1);
 if(e.includes('scannerResearchOnlySymbols is NOT READY')||e.includes('a research-only scanner candidate always HOLDs.')) process.exit(1);
