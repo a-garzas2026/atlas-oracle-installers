@@ -64,14 +64,18 @@ export function holderFirstTarget(state,mirror,symbol,contributions,current,now=
   const active=contributions.filter(c=>c.qty!==0);
   let rec=ledger.owners[symbol]||null;
   if(!current){
+    // First verified-flat observation is the earliest possible handoff boundary.
+    // An earlier model event MUST NOT be recycled into a new opening.
+    if(rec)rec.flatSince ||=new Date(now).toISOString();
     if(active.length>1)return {qty:0,reason:`${symbol}: both desks want a flat symbol; no netted entry`};
     if(!active.length){delete ledger.challenges[symbol];return {qty:0};}
     const c=active[0];
     if(rec){
-      if(c.desk===rec.owner)return {qty:0,reason:`${symbol}: previously held coin closed outside a new authorization`};
-      if(!rec.releaseAt || !fresh(c.eventAt) || parsed(c.eventAt)<=parsed(rec.releaseAt) ||
+      if(!fresh(c.eventAt) || parsed(c.eventAt)<=parsed(rec.flatSince) ||
          now-parsed(c.eventAt)>150000)
-        return {qty:0,reason:`${symbol}: new challenger signal required AFTER holder RELEASE and Binance flat confirmation`};
+        return {qty:0,reason:`${symbol}: require a new research decision AFTER Binance flat confirmation`};
+      if(c.desk!==rec.owner && !rec.releaseAt)
+        return {qty:0,reason:`${symbol}: holder has not released; challenger may not enter`};
       ledger.owners[symbol]={owner:c.desk,contested:false,recordedAt:new Date(now).toISOString()};
       delete ledger.challenges[symbol];
     }
@@ -170,6 +174,10 @@ state.desks.oracle.last.researchAssessments=[{symbol:'AGTUSDT',action:'close',at
 assert.equal(gate(state,m,'AGTUSDT',rows(16984,0),-25417,NOW+10000).qty,0,'Model-authorized close');
 assert.equal(gate(state,m,'AGTUSDT',rows(16984,0),0,NOW+10000).qty,0,'Old challenger cannot enter');
 assert.equal(gate(state,m,'AGTUSDT',rows(16984,0,'2026-11-11T12:22:15.000Z'),0,NOW+20000).qty,16984,'Fresh handoff');
+const ownRec=mirror();
+ownRec.holderFirst={version:1,owners:{ABCUSDT:{owner:'oracle',contested:false}},challenges:{}};
+assert.equal(gate(state,ownRec,'ABCUSDT',rows(0,-100,'2026-11-11T12:21:00.000Z'),0,NOW).qty,0,'Former owner cannot reopen using stale signal');
+assert.equal(gate(state,ownRec,'ABCUSDT',rows(0,-100,'2026-11-11T12:22:05.000Z'),0,NOW+10000).qty,-100,'Former owner can reopen after fresh post-flat decision');
 state.desks.oracle.last.researchAssessments=[];
 const partialOwner=mirror();
 assert.equal(gate(state,partialOwner,'AGTUSDT',rows(16984,0),-42401,NOW).qty,-42401,'Peer-only claim cannot seize live SHORT');
@@ -179,7 +187,7 @@ assert.equal(gate(noProof,noHistory,'AGTUSDT',rows(16984,0),-42401,NOW).qty,-424
 const n=mirror();
 assert.equal(gate(state,n,'XYZUSDT',rows(100,0),0,NOW).qty,100,'Unopposed new position');
 assert.equal(gate(state,n,'XYZUSDT',rows(100,-100),0,NOW).qty,0,'Flat conflict blocked');
-console.log('PASS: eleven holder-first scenarios, AGTUSDT included');
+console.log('PASS: thirteen holder-first scenarios, AGTUSDT included');
 JS
 # Self-contained test bundle: feed Node through stdin. No Docker volume mounts.
 # A mounted /audit directory is not guaranteed to appear in the target daemon.
