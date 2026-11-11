@@ -176,8 +176,9 @@ assert.equal(gate(state,m,'AGTUSDT',rows(16984,0),0,NOW+10000).qty,0,'Old challe
 assert.equal(gate(state,m,'AGTUSDT',rows(16984,0,'2026-11-11T12:22:15.000Z'),0,NOW+20000).qty,16984,'Fresh handoff');
 const ownRec=mirror();
 ownRec.holderFirst={version:1,owners:{ABCUSDT:{owner:'oracle',contested:false}},challenges:{}};
-assert.equal(gate(state,ownRec,'ABCUSDT',rows(0,-100,'2026-11-11T12:21:00.000Z'),0,NOW).qty,0,'Former owner cannot reopen using stale signal');
-assert.equal(gate(state,ownRec,'ABCUSDT',rows(0,-100,'2026-11-11T12:22:05.000Z'),0,NOW+10000).qty,-100,'Former owner can reopen after fresh post-flat decision');
+const ownerRows=at=>rows(0,-100).map(c=>c.desk==='oracle'?{...c,eventAt:at}:c);
+assert.equal(gate(state,ownRec,'ABCUSDT',ownerRows('2026-11-11T12:21:00.000Z'),0,NOW).qty,0,'Former owner cannot reopen using stale signal');
+assert.equal(gate(state,ownRec,'ABCUSDT',ownerRows('2026-11-11T12:22:05.000Z'),0,NOW+10000).qty,-100,'Former owner can reopen after fresh post-flat decision');
 state.desks.oracle.last.researchAssessments=[];
 const partialOwner=mirror();
 assert.equal(gate(state,partialOwner,'AGTUSDT',rows(16984,0),-42401,NOW).qty,-42401,'Peer-only claim cannot seize live SHORT');
