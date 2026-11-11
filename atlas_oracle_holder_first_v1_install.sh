@@ -41,15 +41,15 @@ function originalOwner(state,symbol,direction){
   }
   return null;
 }
-function released(state,owner,symbol,requestAt){
+function released(state,owner,symbol,requestAt,now){
   const requested=parsed(requestAt);
   if(!Number.isFinite(requested))return false;
   const assessment=state.desks?.[owner]?.last?.researchAssessments?.find(x=>x.symbol===symbol);
   if(assessment && ['close','close_all'].includes(String(assessment.action||'').toLowerCase()) &&
-     parsed(assessment.at)>=requested)return true;
+     parsed(assessment.at)>=requested && parsed(assessment.at)<=now+5000)return true;
   return (state.desks?.[owner]?.futuresShadow?.trades||[]).some(x=>
     x.symbol===symbol && x.intent==='close' &&
-    ['model','model_protection'].includes(x.authority) && parsed(x.at)>=requested);
+    ['model','model_protection'].includes(x.authority) && parsed(x.at)>=requested && parsed(x.at)<=now+5000);
 }
 export function holderFirstTarget(state,mirror,symbol,contributions,current,now=Date.now()){
   const desired=contributions.reduce((n,c)=>n+Number(c.qty||0),0);
@@ -108,7 +108,7 @@ export function holderFirstTarget(state,mirror,symbol,contributions,current,now=
   }
   if(own?.qty && sign(own.qty)!==direction)
     return {qty:current,reason:`${symbol}: owner direction conflicts with Binance, freeze`};
-  if(released(state,rec.owner,symbol,ledger.challenges[symbol]?.requestedAt||rec.recordedAt)){
+  if(released(state,rec.owner,symbol,ledger.challenges[symbol]?.requestedAt||rec.recordedAt,now)){
     rec.releaseAt ||=new Date(now).toISOString();
     return {qty:0,reason:`${symbol}: ${rec.owner} approved CLOSE; reduce-only flatten, challenger waits for fresh order`};
   }
@@ -158,14 +158,15 @@ const rows=(atlas,oracle,time='2026-11-11T12:21:39.059Z')=>[
  {desk:'atlas',qty:atlas,eventAt:time},{desk:'oracle',qty:oracle,eventAt:'2026-11-11T11:29:58.356Z'}];
 const m=mirror();
 assert.equal(gate(state,m,'AGTUSDT',rows(16984,-42401),-25417,NOW).qty,-25417,'Atlas cannot reduce Oracle');
-assert.equal(m.owners.AGTUSDT.owner,'oracle');
-assert.equal(m.challenges.AGTUSDT.challenger,'atlas');
+assert.equal(m.holderFirst.owners.AGTUSDT.owner,'oracle');
+assert.equal(m.holderFirst.challenges.AGTUSDT.challenger,'atlas');
 assert.equal(gate(state,m,'AGTUSDT',rows(16984,-20000),-25417,NOW).qty,-20000,'Holder reduction approved');
 assert.equal(gate(state,m,'AGTUSDT',rows(16984,0),-25417,NOW).qty,-25417,'No implicit release');
-state.desks.oracle.last.researchAssessments=[{symbol:'AGTUSDT',action:'close',at:'2026-11-11T12:21:55.000Z'}];
-assert.equal(gate(state,m,'AGTUSDT',rows(16984,0),-25417,NOW).qty,0,'Model-authorized close');
-assert.equal(gate(state,m,'AGTUSDT',rows(16984,0),0,NOW).qty,0,'Old challenger cannot enter');
-assert.equal(gate(state,m,'AGTUSDT',rows(16984,0,'2026-11-11T12:22:05.000Z'),0,NOW+10000).qty,16984,'Fresh handoff');
+state.desks.oracle.last.researchAssessments=[{symbol:'AGTUSDT',action:'close',at:'2026-11-11T12:22:05.000Z'}];
+assert.equal(gate(state,m,'AGTUSDT',rows(16984,0),-25417,NOW+10000).qty,0,'Model-authorized close');
+assert.equal(gate(state,m,'AGTUSDT',rows(16984,0),0,NOW+10000).qty,0,'Old challenger cannot enter');
+assert.equal(gate(state,m,'AGTUSDT',rows(16984,0,'2026-11-11T12:22:15.000Z'),0,NOW+20000).qty,16984,'Fresh handoff');
+state.desks.oracle.last.researchAssessments=[];
 const partialOwner=mirror();
 assert.equal(gate(state,partialOwner,'AGTUSDT',rows(16984,0),-42401,NOW).qty,-42401,'Peer-only claim cannot seize live SHORT');
 const noProof={desks:state.desks,directBinance:{orders:{}}};
