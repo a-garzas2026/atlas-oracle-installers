@@ -79,11 +79,10 @@ export function holderFirstTarget(state,mirror,symbol,contributions,current,now=
     const matches=active.filter(c=>sign(c.qty)===direction);
     const owner=known || (matches.length===1?matches[0].desk:null);
     if(!owner){
-      if(active.length>1)return {qty:current,reason:`${symbol}: cannot determine incumbent owner, exchange unchanged`};
-      return {qty:desired};
+      return {qty:current,reason:`${symbol}: cannot verify incumbent owner, exchange unchanged`};
     }
-    if(active.length<2)return {qty:desired};
-    rec={owner,contested:true,recordedAt:new Date(now).toISOString()};
+    const peerActive=active.some(c=>c.desk!==owner);
+    rec={owner,contested:peerActive,recordedAt:new Date(now).toISOString()};
     ledger.owners[symbol]=rec;
   }
   const own=contributions.find(c=>c.desk===rec.owner);
@@ -130,11 +129,11 @@ new="""  // HOLDER_FIRST_V1: physical position holder has authority over normal 
   const target=mirror.blocked[symbol]?0:holderGate.qty;
   if(holderGate.reason)decision.reasons.push(holderGate.reason);"""
 assert src.count(old)==1,'planner changed; no patch'
-ctx="   execution:{tradingStatus:state.tradingControl?.status || 'running'"
-new_ctx="""   // HOLDER_FIRST_V1: requests appear in the holder's next independent model context.
-   holderFirstRequests:Object.values(mirror?.holderFirst?.challenges||{}).filter(r=>r.holder===who),
+ctx="  execution:{tradingStatus:state.tradingControl?.status || 'running'"
+new_ctx="""  // HOLDER_FIRST_V1: requests appear in the holder's next independent model context.
+  holderFirstRequests:Object.values(mirror?.holderFirst?.challenges||{}).filter(r=>r.holder===who),
    holderFirstPolicy:'If another desk challenges a coin you hold, independently evaluate its proposal. HOLD denies it. REDUCE adjusts only your own quantity. CLOSE releases only after Binance verifies flat; emergency exits remain exempt.',
-   execution:{tradingStatus:state.tradingControl?.status || 'running'"""
+  execution:{tradingStatus:state.tradingControl?.status || 'running'"""
 assert src.count(ctx)==1,'research context changed; no patch'
 out="import { holderFirstTarget } from './research-holder-first.mjs';\n"+src.replace(old,new,1).replace(ctx,new_ctx,1)
 assert out.count('HOLDER_FIRST_V1')==2
@@ -167,10 +166,15 @@ state.desks.oracle.last.researchAssessments=[{symbol:'AGTUSDT',action:'close',at
 assert.equal(gate(state,m,'AGTUSDT',rows(16984,0),-25417,NOW).qty,0,'Model-authorized close');
 assert.equal(gate(state,m,'AGTUSDT',rows(16984,0),0,NOW).qty,0,'Old challenger cannot enter');
 assert.equal(gate(state,m,'AGTUSDT',rows(16984,0,'2026-11-11T12:22:05.000Z'),0,NOW+10000).qty,16984,'Fresh handoff');
+const partialOwner=mirror();
+assert.equal(gate(state,partialOwner,'AGTUSDT',rows(16984,0),-42401,NOW).qty,-42401,'Peer-only claim cannot seize live SHORT');
+const noProof={desks:state.desks,directBinance:{orders:{}}};
+const noHistory=mirror();
+assert.equal(gate(noProof,noHistory,'AGTUSDT',rows(16984,0),-42401,NOW).qty,-42401,'No owner proof freezes opposite entry');
 const n=mirror();
 assert.equal(gate(state,n,'XYZUSDT',rows(100,0),0,NOW).qty,100,'Unopposed new position');
 assert.equal(gate(state,n,'XYZUSDT',rows(100,-100),0,NOW).qty,0,'Flat conflict blocked');
-console.log('PASS: nine holder-first scenarios, AGTUSDT included');
+console.log('PASS: eleven holder-first scenarios, AGTUSDT included');
 JS
 OLDIMAGE="$(docker inspect -f '{{.Image}}' "$CID")"
 docker run --rm --network none --read-only --entrypoint node -v "$BACK:/audit:ro" "$OLDIMAGE" /audit/test.mjs
