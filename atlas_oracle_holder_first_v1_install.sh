@@ -17,6 +17,10 @@ test -n "$CID"
 test "$(docker inspect -f '{{.State.Health.Status}}' "$CID")" = healthy
 test "$(docker compose exec -T twin-desk sha256sum /app/vps/lib/engine.mjs | awk '{print $1}')" = "$BASE"
 OLD_SHA="$(sha256sum "$SRC" | awk '{print $1}')"
+test "$OLD_SHA" = 188c0c96487ed7971828056772dcaaef6ca33f985bf28f9982bf864b8883154c || {
+  echo 'ABORT: research planner is not the previously inspected version'
+  exit 1
+}
 test "$(docker compose exec -T twin-desk sha256sum /app/vps/lib/research-live.mjs | awk '{print $1}')" = "$OLD_SHA"
 test ! -e "$HELP"
 cp -a "$SRC" "$BACK/research-live.original.mjs"
@@ -177,8 +181,22 @@ assert.equal(gate(state,n,'XYZUSDT',rows(100,0),0,NOW).qty,100,'Unopposed new po
 assert.equal(gate(state,n,'XYZUSDT',rows(100,-100),0,NOW).qty,0,'Flat conflict blocked');
 console.log('PASS: eleven holder-first scenarios, AGTUSDT included');
 JS
+# Self-contained test bundle: feed Node through stdin. No Docker volume mounts.
+# A mounted /audit directory is not guaranteed to appear in the target daemon.
+python3 - "$BACK/research-holder-first.mjs" "$BACK/test.mjs" "$BACK/test-bundle.mjs" <<'PY'
+from pathlib import Path
+import sys
+mod=Path(sys.argv[1]).read_text()
+test=Path(sys.argv[2]).read_text()
+assert mod.count('export function holderFirstTarget')==1
+anchor="import {holderFirstTarget as gate} from '/audit/research-holder-first.mjs';"
+assert test.count(anchor)==1
+bundle=mod.replace('export function holderFirstTarget','function holderFirstTarget',1)+"\n"+test.replace(anchor,'const gate=holderFirstTarget;',1)
+Path(sys.argv[3]).write_text(bundle)
+print('PASS: self-contained test bundle assembled')
+PY
 OLDIMAGE="$(docker inspect -f '{{.Image}}' "$CID")"
-docker run --rm --network none --read-only --entrypoint node -v "$BACK:/audit:ro" "$OLDIMAGE" /audit/test.mjs
+docker run --rm -i --network none --read-only --entrypoint node "$OLDIMAGE" --input-type=module < "$BACK/test-bundle.mjs"
 echo "STAGED: $BACK"
 echo '=== CHECK IF BINANCE IS SAFE FOR ENGINE RESTART ==='
 if ! docker compose exec -T twin-desk node --input-type=module <<'JS'
@@ -229,9 +247,9 @@ recover(){
 }
 trap recover EXIT
 test "$(sha256sum "$SRC" | awk '{print $1}')" = "$OLD_SHA"
+APPLIED=1
 cp -a "$BACK/research-live.staged.mjs" "$SRC"
 cp -a "$BACK/research-holder-first.mjs" "$HELP"
-APPLIED=1
 echo '=== BUILD HOLDER-FIRST IMAGE ==='
 docker compose build twin-desk
 NEWHASH="$(sha256sum "$SRC" | awk '{print $1}')"
